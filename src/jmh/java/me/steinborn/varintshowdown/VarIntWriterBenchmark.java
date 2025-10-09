@@ -84,6 +84,14 @@ public class VarIntWriterBenchmark {
 
   @Benchmark
   @CompilerControl(CompilerControl.Mode.DONT_INLINE)
+  public void blendedLEVarintWrite(BlendedLEVarintState state) {
+    for (int number : numbers) {
+      state.write(number);
+    }
+  }
+
+  @Benchmark
+  @CompilerControl(CompilerControl.Mode.DONT_INLINE)
   public void lucky5VarintWrite(Lucky5VarintState state) {
     for (int number : numbers) {
       state.write(number);
