@@ -27,7 +27,8 @@ public class VarIntWriterBenchmark {
         for (int i = 0; i < 2048; i++) {
             this.numbers[i] = generateRandomBitNumber(random, random.nextInt(30) + 1);
         }
-        //a();
+        // delete this before speed test bc this loads classes and makes virtual methods lookup slow
+        check();
     }
 
     private static int generateRandomBitNumber(Random random, int i) {
@@ -39,7 +40,7 @@ public class VarIntWriterBenchmark {
         return lowerBound + random.nextInt(upperBound - lowerBound);
     }
 
-    private void a() {
+    private void check() {
         ByteBuf buf = Unpooled.directBuffer(5);
         ByteBuf buf2 = Unpooled.directBuffer(5);
         for (int n : numbers) {
@@ -48,7 +49,13 @@ public class VarIntWriterBenchmark {
             if (!buf.equals(buf2)) {
                 System.out.println("Mismatch for " + n);
                 System.out.println("Lucky5:   " + buf);
+                for (int i = 0, l = buf.capacity(); i < l; ++i) {
+                    System.out.println("Lucky5[" + i + "]:   " + buf.getByte(i));
+                }
                 System.out.println("Blended:  " + buf2);
+                for (int i = 0, l = buf2.capacity(); i < l; ++i) {
+                    System.out.println("Blended[" + i + "]:   " + buf2.getByte(i));
+                }
                 throw new IllegalArgumentException();
             }
             buf.clear();

@@ -28,37 +28,17 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         return vector.reduceLanes(VectorOperators.OR);
     }
 
+    // copy code from writeXXX methods to here to check assembly
+    // or just call those methods directly to check speed only
     @Override
     public void write(ByteBuf buf, int value) {
-        if ((value & (0xFFFFFFFF << 7)) == 0) {
-            buf.writeByte(value);
-        } else {
-            IntVector vector = IntVector.broadcast(IntVector.SPECIES_128, value);
-            vector = vector.lanewise(VectorOperators.AND, vvv);
-            buf.writeByte(vector.lane(0) | 0x80);
-            int a = vector.lane(1) >>> 7;
-            if ((value & (0xFFFFFFFF << 14)) == 0) {
-                buf.writeByte(a);
-            } else {
-                buf.writeByte(a | 0x80);
-                a = vector.lane(2) >>> 14;
-                if ((value & (0xFFFFFFFF << 21)) == 0) {
-                    buf.writeByte(a);
-                } else {
-                    buf.writeByte(a | 0x80);
-                    a = vector.lane(3) >>> 21;
-                    if ((value & (0xFFFFFFFF << 28)) == 0) {
-                        buf.writeByte(a);
-                    } else {
-                        buf.writeByte(a | 0x80);
-                        buf.writeByte(value >>> 28);
-                    }
-                }
-            }
-        }
+//        writeLittleEndianSecondOne(buf, value);
+        writeLittleEndianSIMD2(buf, value);
+//        writeLittleEndianSIMD3(buf, value);
     }
 
-    private static final IntVector vvv = IntVector.fromArray(IntVector.SPECIES_128, new int[]{0xFF, 0x7F80, 0x3FC000, 0x1FE00000}, 0);
+    private static final IntVector vvv = IntVector.fromArray(IntVector.SPECIES_128, new int[]{0x7F, 0x3F80, 0x1FC000, 0xFE00000}, 0);
+    // needs avx to support stuff that i dont know
     private static void writeLittleEndianSIMD2(ByteBuf buf, int value) {
         if ((value & (0xFFFFFFFF << 7)) == 0) {
             buf.writeByte(value);
@@ -85,8 +65,31 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         }
     }
 
+    private static final IntVector vvv2 = IntVector.fromArray(IntVector.SPECIES_128, new int[]{0, 1, 2, 3}, 0);
+    // needs avx2 to support LSHL
+    private static void writeLittleEndianSIMD3(ByteBuf buf, int value) {
+        if ((value & (0xFFFFFFFF << 7)) == 0) {
+            buf.writeByte(value);
+            return;
+        }
+        IntVector vector = IntVector.broadcast(IntVector.SPECIES_128, value);
+        vector = vector.lanewise(VectorOperators.AND, vvv);
+        vector = vector.lanewise(VectorOperators.LSHL, vvv2);
+        int a = vector.reduceLanes(VectorOperators.OR);
+        if ((value & (0xFFFFFFFF << 14)) == 0) {
+            buf.writeShortLE(a | 0x80);
+        } else if ((value & (0xFFFFFFFF << 21)) == 0) {
+            buf.writeMediumLE(a | 0x8080);
+        } else if ((value & (0xFFFFFFFF << 28)) == 0) {
+            buf.writeIntLE(a | 0x808080);
+        } else {
+            buf.writeIntLE(a | 0x80808080);
+            buf.writeByte(value >>> 28);
+        }
+    }
+
     // why is table switch so slow?
-    //@Deprecated
+    @Deprecated
     private static void writeTableSwitch(ByteBuf buf, int value) {
         switch (Integer.numberOfLeadingZeros(value)) {
             case 32, 31, 30, 29, 28, 27, 26, 25: {
@@ -138,6 +141,7 @@ public class Lucky5VarIntWriter implements VarIntWriter {
     }
 
     @Deprecated
+    // cmov stuff test and failed
     private static void writeRemoveJmp(ByteBuf buf, int value) {
         int index = buf.writerIndex();
         buf.ensureWritable(5);
@@ -194,6 +198,7 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         buf.writerIndex(index + l);
     }
 
+    @Deprecated
     private static void writeLittleEndianSIMD(ByteBuf buf, int value) {
         if ((value & (0xFFFFFFFF << 7)) == 0) {
             buf.writeByte(value);
@@ -212,6 +217,8 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         }
     }
 
+    // fastest le sisd method currently
+    // modern cpus seems to have less cost on le-be swap
     private static void writeLittleEndianSecondOne(ByteBuf buf, int value) {
         if ((value & (0xFFFFFFFF << 7)) == 0) {
             buf.writeByte(value);
