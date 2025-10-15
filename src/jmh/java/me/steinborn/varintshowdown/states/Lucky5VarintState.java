@@ -11,7 +11,7 @@ import org.openjdk.jmh.annotations.*;
 public class Lucky5VarintState {
 
   private ByteBuf buf;
-  private VarIntWriter varIntWriter;
+  private Lucky5VarIntWriter varIntWriter;
 
   @Setup(Level.Trial)
   public void setup() {

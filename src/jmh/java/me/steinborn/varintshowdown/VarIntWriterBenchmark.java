@@ -1,5 +1,9 @@
 package me.steinborn.varintshowdown;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import me.steinborn.varintshowdown.res.BlendedVarIntWriter;
+import me.steinborn.varintshowdown.res.Lucky5VarIntWriter;
 import me.steinborn.varintshowdown.states.*;
 import org.openjdk.jmh.annotations.*;
 
@@ -14,79 +18,59 @@ import java.util.concurrent.TimeUnit;
 @OutputTimeUnit(TimeUnit.SECONDS)
 public class VarIntWriterBenchmark {
 
-  private int[] numbers;
+    private int[] numbers;
 
-  @Setup
-  public void setupNumbers() {
-    Random random = new Random(77083993792645L);
-    this.numbers = new int[2048];
-    for (int i = 0; i < 2048; i++) {
-      this.numbers[i] = generateRandomBitNumber(random, random.nextInt(30) + 1);
+    @Setup
+    public void setupNumbers() {
+        Random random = new Random(77083993792645L);
+        this.numbers = new int[2048];
+        for (int i = 0; i < 2048; i++) {
+            this.numbers[i] = generateRandomBitNumber(random, random.nextInt(30) + 1);
+        }
+        //a();
     }
-  }
 
-  private static int generateRandomBitNumber(Random random, int i) {
-    int lowerBound = (1 << (i - 1));
-    int upperBound = (1 << i) - 1;
-    if (lowerBound == upperBound) {
-      return lowerBound;
+    private static int generateRandomBitNumber(Random random, int i) {
+        int lowerBound = (1 << (i - 1));
+        int upperBound = (1 << i) - 1;
+        if (lowerBound == upperBound) {
+            return lowerBound;
+        }
+        return lowerBound + random.nextInt(upperBound - lowerBound);
     }
-    return lowerBound + random.nextInt(upperBound - lowerBound);
-  }
 
-  @Benchmark
-  @CompilerControl(CompilerControl.Mode.DONT_INLINE)
-  public void oldVelocityVarintWrite(OldVarintState state) {
-    for (int number : numbers) {
-      state.write(number);
+    private void a() {
+        ByteBuf buf = Unpooled.directBuffer(5);
+        ByteBuf buf2 = Unpooled.directBuffer(5);
+        for (int n : numbers) {
+            new Lucky5VarIntWriter().write(buf, n);
+            new BlendedVarIntWriter().write(buf2, n);
+            if (!buf.equals(buf2)) {
+                System.out.println("Mismatch for " + n);
+                System.out.println("Lucky5:   " + buf);
+                System.out.println("Blended:  " + buf2);
+                throw new IllegalArgumentException();
+            }
+            buf.clear();
+            buf2.clear();
+        }
+        buf.release();
+        buf2.release();
     }
-  }
 
-  @Benchmark
-  @CompilerControl(CompilerControl.Mode.DONT_INLINE)
-  public void startinVarintWrite(StartinVarintState state) {
-    for (int number : numbers) {
-      state.write(number);
+    @Benchmark
+    @CompilerControl(CompilerControl.Mode.DONT_INLINE)
+    public void lucky5VarintWrite(Lucky5VarintState state) {
+        for (int number : numbers) {
+            state.write(number);
+        }
     }
-  }
 
-  @Benchmark
-  @CompilerControl(CompilerControl.Mode.DONT_INLINE)
-  public void unrolledVarintWrite(UnrolledVarintState state) {
-    for (int number : numbers) {
-      state.write(number);
+    @Benchmark
+    @CompilerControl(CompilerControl.Mode.DONT_INLINE)
+    public void zblendedVarintWrite(BlendedVarintState state) {
+        for (int number : numbers) {
+            state.write(number);
+        }
     }
-  }
-
-  @Benchmark
-  @CompilerControl(CompilerControl.Mode.DONT_INLINE)
-  public void smartUnrolledVarintWrite(SmartUnrolledVarintState state) {
-    for (int number : numbers) {
-      state.write(number);
-    }
-  }
-
-  @Benchmark
-  @CompilerControl(CompilerControl.Mode.DONT_INLINE)
-  public void smartNoDataDependencyUnrolledVarintWrite(SmartNoDataDependencyUnrolledVarintState state) {
-    for (int number : numbers) {
-      state.write(number);
-    }
-  }
-
-  @Benchmark
-  @CompilerControl(CompilerControl.Mode.DONT_INLINE)
-  public void blendedVarintWrite(BlendedVarintState state) {
-    for (int number : numbers) {
-      state.write(number);
-    }
-  }
-
-  @Benchmark
-  @CompilerControl(CompilerControl.Mode.DONT_INLINE)
-  public void lucky5VarintWrite(Lucky5VarintState state) {
-    for (int number : numbers) {
-      state.write(number);
-    }
-  }
 }

@@ -1,7 +1,6 @@
 package me.steinborn.varintshowdown.states;
 
 import me.steinborn.varintshowdown.res.BlendedVarIntWriter;
-import me.steinborn.varintshowdown.res.VarIntWriter;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.openjdk.jmh.annotations.*;
@@ -10,7 +9,7 @@ import org.openjdk.jmh.annotations.*;
 public class BlendedVarintState {
 
   private ByteBuf buf;
-  private VarIntWriter varIntWriter;
+  private BlendedVarIntWriter varIntWriter;
 
   @Setup(Level.Trial)
   public void setup() {
