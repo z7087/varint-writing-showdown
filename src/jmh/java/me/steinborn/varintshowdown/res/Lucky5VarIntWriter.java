@@ -33,7 +33,9 @@ public class Lucky5VarIntWriter implements VarIntWriter {
     @Override
     public void write(ByteBuf buf, int value) {
 //        writeLittleEndianSecondOne(buf, value);
-        writeLittleEndianSIMD2(buf, value);
+//        writeLittleEndianSecondOne2(buf, value);
+        writeLittleEndianSIMD4(buf, value);
+//        writeLittleEndianSIMD2(buf, value);
 //        writeLittleEndianSIMD3(buf, value);
     }
 
@@ -75,6 +77,30 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         IntVector vector = IntVector.broadcast(IntVector.SPECIES_128, value);
         vector = vector.lanewise(VectorOperators.AND, vvv);
         vector = vector.lanewise(VectorOperators.LSHL, vvv2);
+        int a = vector.reduceLanes(VectorOperators.OR);
+        if ((value & (0xFFFFFFFF << 14)) == 0) {
+            buf.writeShortLE(a | 0x80);
+        } else if ((value & (0xFFFFFFFF << 21)) == 0) {
+            buf.writeMediumLE(a | 0x8080);
+        } else if ((value & (0xFFFFFFFF << 28)) == 0) {
+            buf.writeIntLE(a | 0x808080);
+        } else {
+            buf.writeIntLE(a | 0x80808080);
+            buf.writeByte(value >>> 28);
+        }
+    }
+
+
+    private static final IntVector vvv3 = IntVector.fromArray(IntVector.SPECIES_128, new int[]{1, 2, 4, 8}, 0);
+    // LSHL simulation, needs avx only
+    private static void writeLittleEndianSIMD4(ByteBuf buf, int value) {
+        if ((value & (0xFFFFFFFF << 7)) == 0) {
+            buf.writeByte(value);
+            return;
+        }
+        IntVector vector = IntVector.broadcast(IntVector.SPECIES_128, value);
+        vector = vector.lanewise(VectorOperators.AND, vvv);
+        vector = vector.lanewise(VectorOperators.MUL, vvv3);
         int a = vector.reduceLanes(VectorOperators.OR);
         if ((value & (0xFFFFFFFF << 14)) == 0) {
             buf.writeShortLE(a | 0x80);
@@ -217,8 +243,32 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         }
     }
 
-    // fastest le sisd method currently
-    // modern cpus seems to have less cost on le-be swap
+
+    private static void writeLittleEndianSecondOne2(ByteBuf buf, int value) {
+        if ((value & (0xFFFFFFFF << 7)) == 0) {
+            buf.writeByte(value);
+            return;
+        }
+        int a = (value & 0x7F) | ((value & 0x3F80) << 1);
+        if ((value & (0xFFFFFFFF << 14)) == 0) {
+            buf.writeShortLE(a | 0x80);
+        } else {
+            a |= ((value & 0x1FC000) << 2);
+            if ((value & (0xFFFFFFFF << 21)) == 0) {
+                buf.writeMediumLE(a | 0x8080);
+            } else {
+                a |= ((value & 0xFE00000) << 3);
+                if ((value & (0xFFFFFFFF << 28)) == 0) {
+                    buf.writeIntLE(a | 0x808080);
+                } else {
+                    buf.writeIntLE(a | 0x80808080);
+                    buf.writeByte(value >>> 28);
+                }
+            }
+        }
+    }
+
+    // le-be swap seems to have less cost
     private static void writeLittleEndianSecondOne(ByteBuf buf, int value) {
         if ((value & (0xFFFFFFFF << 7)) == 0) {
             buf.writeByte(value);

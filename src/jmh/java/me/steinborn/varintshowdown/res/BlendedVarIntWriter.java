@@ -8,7 +8,24 @@ public class BlendedVarIntWriter implements VarIntWriter {
 
   @Override
   public void write(ByteBuf buf, int value) {
-      writeBigEndian(buf, value);
+      if ((value & (0xFFFFFFFF << 7)) == 0) {
+          buf.writeByte(value);
+      } else if ((value & (0xFFFFFFFF << 14)) == 0) {
+          int w = (value << 8) | (value >>> 7);
+          buf.writeShort(w | 0x8000);
+      } else if ((value & (0xFFFFFFFF << 21)) == 0) {
+          int w = (value << 16) | ((value & 0x3F80) << 1) | (value >>> 14);
+          buf.writeMedium(w | 0x808000);
+      } else if ((value & (0xFFFFFFFF << 28)) == 0) {
+          int w = (value << 24) | ((value & 0x3F80) << 9)
+                  | ((value & 0x1FC000) >>> 6) | (value >>> 21);
+          buf.writeInt(w | 0x80808000);
+      } else {
+          int w = (value << 24) | ((value & 0x3F80) << 9)
+                  | ((value & 0x1FC000) >>> 6) | ((value >>> 21) & 0x7F);
+          buf.writeInt(w | 0x80808080);
+          buf.writeByte(value >>> 28);
+      }
   }
 
   private static final IntVector vvv = IntVector.fromArray(IntVector.SPECIES_128, new int[]{0x7F, 0x3F80, 0x1FC000, 0xFE00000}, 0);

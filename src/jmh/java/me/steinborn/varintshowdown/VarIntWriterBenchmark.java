@@ -28,7 +28,7 @@ public class VarIntWriterBenchmark {
             this.numbers[i] = generateRandomBitNumber(random, random.nextInt(30) + 1);
         }
         // delete this before speed test bc this loads classes and makes virtual methods lookup slow
-        check();
+        //check();
     }
 
     private static int generateRandomBitNumber(Random random, int i) {
