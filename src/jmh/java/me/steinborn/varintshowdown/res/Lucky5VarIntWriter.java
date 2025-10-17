@@ -34,13 +34,15 @@ public class Lucky5VarIntWriter implements VarIntWriter {
     public void write(ByteBuf buf, int value) {
 //        writeLittleEndianSecondOne(buf, value);
 //        writeLittleEndianSecondOne2(buf, value);
-        writeLittleEndianSIMD4(buf, value);
+        writeLittleEndianSIMD5(buf, value);
 //        writeLittleEndianSIMD2(buf, value);
 //        writeLittleEndianSIMD3(buf, value);
+//        writeLittleEndianSIMD4(buf, value);
     }
 
     private static final IntVector vvv = IntVector.fromArray(IntVector.SPECIES_128, new int[]{0x7F, 0x3F80, 0x1FC000, 0xFE00000}, 0);
     // needs avx to support stuff that i dont know
+    @Deprecated
     private static void writeLittleEndianSIMD2(ByteBuf buf, int value) {
         if ((value & (0xFFFFFFFF << 7)) == 0) {
             buf.writeByte(value);
@@ -111,6 +113,30 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         } else {
             buf.writeIntLE(a | 0x80808080);
             buf.writeByte(value >>> 28);
+        }
+    }
+
+    // fallback to sisd implementation at length==2, currently fastest
+    private static void writeLittleEndianSIMD5(ByteBuf buf, int value) {
+        if ((value & (0xFFFFFFFF << 7)) == 0) {
+            buf.writeByte(value);
+            return;
+        }
+        if ((value & (0xFFFFFFFF << 14)) == 0) {
+            buf.writeShortLE((value & 0x7F) | ((value & 0x3F80) << 1) | 0x80);
+        } else {
+            IntVector vector = IntVector.broadcast(IntVector.SPECIES_128, value);
+            vector = vector.lanewise(VectorOperators.AND, vvv);
+            vector = vector.lanewise(VectorOperators.MUL, vvv3);
+            int a = vector.reduceLanes(VectorOperators.OR);
+            if ((value & (0xFFFFFFFF << 21)) == 0) {
+                buf.writeMediumLE(a | 0x8080);
+            } else if ((value & (0xFFFFFFFF << 28)) == 0) {
+                buf.writeIntLE(a | 0x808080);
+            } else {
+                buf.writeIntLE(a | 0x80808080);
+                buf.writeByte(value >>> 28);
+            }
         }
     }
 

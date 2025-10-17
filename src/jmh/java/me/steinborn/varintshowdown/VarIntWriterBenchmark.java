@@ -24,7 +24,7 @@ public class VarIntWriterBenchmark {
     public void setupNumbers() {
         Random random = new Random(77083993792645L);
         this.numbers = new int[2048];
-        for (int i = 0; i < 2048; i++) {
+        for (int i = 0; i < 2048; i++) { // random.nextInt(30) + 1
             this.numbers[i] = generateRandomBitNumber(random, random.nextInt(30) + 1);
         }
         // delete this before speed test bc this loads classes and makes virtual methods lookup slow
@@ -32,12 +32,12 @@ public class VarIntWriterBenchmark {
     }
 
     private static int generateRandomBitNumber(Random random, int i) {
-        int lowerBound = (1 << (i - 1));
-        int upperBound = (1 << i) - 1;
-        if (lowerBound == upperBound) {
-            return lowerBound;
-        }
-        return lowerBound + random.nextInt(upperBound - lowerBound);
+        if (i == 0) return 0;
+        if (i < 0) throw new IllegalArgumentException("i < 0");
+        i = Math.min(i, 32);
+        int highestBitFlag = 1 << (i - 1);
+        int mask = ~(-1 << i);
+        return (random.nextInt() & mask) | highestBitFlag;
     }
 
     private void check() {
