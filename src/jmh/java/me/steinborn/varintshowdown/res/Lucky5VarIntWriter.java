@@ -1,15 +1,7 @@
 package me.steinborn.varintshowdown.res;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.util.internal.PlatformDependent;
-import jdk.incubator.vector.IntVector;
-import jdk.incubator.vector.VectorMask;
-import jdk.incubator.vector.VectorOperators;
-
-import java.lang.foreign.MemoryLayout;
-import java.lang.foreign.MemorySegment;
-import java.lang.foreign.ValueLayout;
-import java.nio.ByteOrder;
+import jdk.incubator.vector.*;
 
 public class Lucky5VarIntWriter implements VarIntWriter {
     private static final int[] VARINT_EXACT_BYTE_LENGTHS = new int[33];
@@ -32,9 +24,10 @@ public class Lucky5VarIntWriter implements VarIntWriter {
     // or just call those methods directly to check speed only
     @Override
     public void write(ByteBuf buf, int value) {
+        writeLittleEndianSIMD6(buf, value);
 //        writeLittleEndianSecondOne(buf, value);
 //        writeLittleEndianSecondOne2(buf, value);
-        writeLittleEndianSIMD5(buf, value);
+        //writeLittleEndianSIMD5(buf, value);
 //        writeLittleEndianSIMD2(buf, value);
 //        writeLittleEndianSIMD3(buf, value);
 //        writeLittleEndianSIMD4(buf, value);
@@ -116,6 +109,8 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         }
     }
 
+    private static final boolean hasAVX2 = true;
+
     // fallback to sisd implementation at length==2, currently fastest
     private static void writeLittleEndianSIMD5(ByteBuf buf, int value) {
         if ((value & (0xFFFFFFFF << 7)) == 0) {
@@ -127,8 +122,68 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         } else {
             IntVector vector = IntVector.broadcast(IntVector.SPECIES_128, value);
             vector = vector.lanewise(VectorOperators.AND, vvv);
-            vector = vector.lanewise(VectorOperators.MUL, vvv3);
+            if (hasAVX2) {
+                vector = vector.lanewise(VectorOperators.LSHL, vvv2);
+            } else {
+                vector = vector.lanewise(VectorOperators.MUL, vvv3);
+            }
             int a = vector.reduceLanes(VectorOperators.OR);
+            if ((value & (0xFFFFFFFF << 21)) == 0) {
+                buf.writeMediumLE(a | 0x8080);
+            } else if ((value & (0xFFFFFFFF << 28)) == 0) {
+                buf.writeIntLE(a | 0x808080);
+            } else {
+                buf.writeIntLE(a | 0x80808080);
+                buf.writeByte(value >>> 28);
+            }
+        }
+    }
+
+    private static final VectorShuffle<Byte> shuffle = VectorShuffle.fromValues(
+            ByteVector.SPECIES_128,
+            0, 5, 10, 15,
+            4, 5, 6, 7,
+            8, 9, 10, 11,
+            12, 13, 14, 15
+    );
+    private static final VectorMask<Byte> mask = VectorMask.fromValues(
+            ByteVector.SPECIES_128,
+            true, true, true, true,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false, false
+    );
+
+    private static final boolean useShuffle = true;
+
+    private static void writeLittleEndianSIMD6(ByteBuf buf, int value) {
+        if ((value & (0xFFFFFFFF << 7)) == 0) {
+            buf.writeByte(value);
+            return;
+        }
+        if ((value & (0xFFFFFFFF << 14)) == 0) {
+            buf.writeShortLE((value & 0x7F) | ((value & 0x3F80) << 1) | 0x80);
+        } else {
+            IntVector vector = IntVector.broadcast(IntVector.SPECIES_128, value);
+            int a;
+            if (useShuffle) {
+                if (hasAVX2) {
+                    vector = vector.lanewise(VectorOperators.LSHL, vvv2);
+                } else {
+                    vector = vector.lanewise(VectorOperators.MUL, vvv3);
+                }
+                a = vector.reinterpretAsBytes().rearrange(shuffle
+                        , mask // why the mask speeds up the shuffle???
+                ).reinterpretAsInts().lane(0);
+            } else {
+                vector = vector.lanewise(VectorOperators.AND, vvv);
+                if (hasAVX2) {
+                    vector = vector.lanewise(VectorOperators.LSHL, vvv2);
+                } else {
+                    vector = vector.lanewise(VectorOperators.MUL, vvv3);
+                }
+                a = vector.reduceLanes(VectorOperators.OR);
+            }
             if ((value & (0xFFFFFFFF << 21)) == 0) {
                 buf.writeMediumLE(a | 0x8080);
             } else if ((value & (0xFFFFFFFF << 28)) == 0) {
