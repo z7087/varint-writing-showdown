@@ -25,6 +25,7 @@ public class Lucky5VarIntWriter implements VarIntWriter {
     @Override
     public void write(ByteBuf buf, int value) {
         writeLittleEndianSIMD6(buf, value);
+        //writeLittleEndianBMI(buf, value);
 //        writeLittleEndianSecondOne(buf, value);
 //        writeLittleEndianSecondOne2(buf, value);
         //writeLittleEndianSIMD5(buf, value);
@@ -324,6 +325,24 @@ public class Lucky5VarIntWriter implements VarIntWriter {
         }
     }
 
+
+    private static void writeLittleEndianBMI(ByteBuf buf, int value) {
+        if ((value & (0xFFFFFFFF << 7)) == 0) {
+            buf.writeByte(value);
+            return;
+        }
+        int a = Integer.expand(value, 0x7F7F7F7F);
+        if ((value & (0xFFFFFFFF << 14)) == 0) {
+            buf.writeShortLE(a | 0x80);
+        } else if ((value & (0xFFFFFFFF << 21)) == 0) {
+            buf.writeMediumLE(a | 0x8080);
+        } else if ((value & (0xFFFFFFFF << 28)) == 0) {
+            buf.writeIntLE(a | 0x808080);
+        } else {
+            buf.writeIntLE(a | 0x80808080);
+            buf.writeByte(value >>> 28);
+        }
+    }
 
     private static void writeLittleEndianSecondOne2(ByteBuf buf, int value) {
         if ((value & (0xFFFFFFFF << 7)) == 0) {
